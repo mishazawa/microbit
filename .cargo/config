@@ -1,0 +1,12 @@
+# Configure builds for our target, the micro:bit's architecture
+[target.thumbv7em-none-eabihf]
+# Execute binary using gdb when calling cargo run
+runner = "arm-none-eabi-gdb"
+# Tweak to the linking process required by the cortex-m-rt crate
+rustflags = [
+    "-C", "link-arg=-Tlink.x",
+]
+
+# Automatically select this target when cargo building this project
+[build]
+target = "thumbv7em-none-eabihf"
