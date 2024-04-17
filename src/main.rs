@@ -15,7 +15,7 @@ use microbit::{self as _};
 
 use panic_rtt_target as _;
 
-use rtt_target::{rprintln, rtt_init_print};
+use rtt_target::rtt_init_print;
 
 use crate::buttons::{get_buttons_state, init_buttons, init_polling};
 
@@ -111,23 +111,34 @@ fn main() -> ! {
         let buttons_state = get_buttons_state();
 
         match buttons_state {
-            [true, false, _] => {
-                speaker.set_period(Hertz(440u32));
+            [true, false, false, false, false, false, false] => {
+                speaker.set_period(Hertz(261));
             }
-            [false, true, _] => {
-                speaker.set_period(Hertz(880u32));
+            [false, true, false, false, false, false, false] => {
+                speaker.set_period(Hertz(293));
             }
-            [true, true, _] => {
-                speaker.set_period(Hertz(220u32));
+            [false, false, true, false, false, false, false] => {
+                speaker.set_period(Hertz(329));
             }
-            _ => {
-                period += 1;
-                period %= led_on_states.len();
+            [false, false, false, true, false, false, false] => {
+                speaker.set_period(Hertz(349));
             }
+            [false, false, false, false, true, false, false] => {
+                speaker.set_period(Hertz(392));
+            }
+            [false, false, false, false, false, true, false] => {
+                speaker.set_period(Hertz(440));
+            }
+            [false, false, false, false, false, false, true] => {
+                speaker.set_period(Hertz(493));
+            }
+            _ => (),
         }
+        period += 1;
+        period %= led_on_states.len();
 
         match buttons_state {
-            [false, false, _] => {
+            [false, false, false, false, false, false, false] => {
                 speaker.disable_channel(pwm::Channel::C0);
             }
             _ => {
