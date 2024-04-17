@@ -98,21 +98,36 @@ fn main() -> ! {
     init_buttons(board.GPIOTE, board.pins, None);
 
     loop {
-        let button = get_pin_state();
+        let buttons_state = get_pin_state();
 
-        if button {
-            rprintln!("{}", speaker.period().0);
-            period += 1;
-            period %= led_on_states.len();
+        match buttons_state {
+            [true, false, _] => {
+                speaker.set_period(Hertz(440u32));
+            }
+            [false, true, _] => {
+                speaker.set_period(Hertz(880u32));
+            }
+            [true, true, _] => {
+                speaker.set_period(Hertz(220u32));
+            }
+            _ => {
+                period += 1;
+                period %= led_on_states.len();
+            }
         }
 
-        if button {
-            let max_duty = speaker.max_duty();
-            speaker.set_duty_on_common(max_duty / 2);
-            speaker.enable_channel(pwm::Channel::C0);
-        } else {
-            speaker.disable_channel(pwm::Channel::C0);
+        match buttons_state {
+            [false, false, _] => {
+                speaker.disable_channel(pwm::Channel::C0);
+            }
+            _ => {
+                let max_duty = speaker.max_duty();
+                speaker.set_duty_on_common(max_duty / 2);
+                speaker.enable_channel(pwm::Channel::C0);
+            }
         }
+
+        // rprintln!("{}", speaker.period().0);
 
         let [row, col] = led_on_states[period];
 

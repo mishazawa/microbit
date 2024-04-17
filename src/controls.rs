@@ -6,37 +6,32 @@ use microbit::{
     hal::gpiote::Gpiote,
     pac::{self, interrupt, GPIOTE},
 };
+use rtt_target::rprintln;
 
 static GPIO: Mutex<RefCell<Option<Gpiote>>> = Mutex::new(RefCell::new(None));
-static BUTTON_PRESS: Mutex<RefCell<bool>> = Mutex::new(RefCell::new(false));
+static BUTTONS_STATE: Mutex<RefCell<[bool; 3]>> = Mutex::new(RefCell::new([false; 3]));
 
-pub(crate) fn init_buttons(gpiote: GPIOTE, pins: Pins, buttons: Option<Buttons>) {
+pub(crate) fn init_buttons(gpiote: GPIOTE, pins: Pins, _buttons: Option<Buttons>) {
     let gpiote = Gpiote::new(gpiote);
 
     let channel0 = gpiote.channel0();
     let channel1 = gpiote.channel1();
+    let channel2 = gpiote.channel2();
+    let channel3 = gpiote.channel3();
 
     let p0_02 = pins.p0_02.into_pulldown_input().degrade();
+    let p0_03 = pins.p0_03.into_pulldown_input().degrade();
 
     channel0.input_pin(&p0_02).lo_to_hi().enable_interrupt();
     channel1.input_pin(&p0_02).hi_to_lo().enable_interrupt();
 
+    channel2.input_pin(&p0_03).lo_to_hi().enable_interrupt();
+    channel3.input_pin(&p0_03).hi_to_lo().enable_interrupt();
+
     channel0.reset_events();
     channel1.reset_events();
-
-    if let Some(btn) = buttons {
-        let channel2 = gpiote.channel2();
-        let channel3 = gpiote.channel3();
-
-        let pin = btn.button_a.into_pulldown_input().degrade();
-
-        // inverted logic
-        channel2.input_pin(&pin).hi_to_lo().enable_interrupt();
-        channel3.input_pin(&pin).lo_to_hi().enable_interrupt();
-
-        channel2.reset_events();
-        channel3.reset_events();
-    }
+    channel2.reset_events();
+    channel3.reset_events();
 
     free(move |cs| {
         *GPIO.borrow(cs).borrow_mut() = Some(gpiote);
@@ -49,9 +44,9 @@ pub(crate) fn init_buttons(gpiote: GPIOTE, pins: Pins, buttons: Option<Buttons>)
     });
 }
 
-pub(crate) fn get_pin_state() -> bool {
+pub(crate) fn get_pin_state() -> [bool; 3] {
     free(|cs| {
-        return *BUTTON_PRESS.borrow(cs).borrow();
+        return *BUTTONS_STATE.borrow(cs).borrow();
     })
 }
 
@@ -65,22 +60,13 @@ fn GPIOTE() {
             let butt_a_is_pressed = gpiote.channel2().is_event_triggered();
             let butt_a_is_released = gpiote.channel3().is_event_triggered();
 
-            let any_button_released = match (butt_is_released, butt_a_is_released) {
-                (false, _) => false,
-                (_, false) => false,
-                _ => true,
+            let button_0_state = match butt_is_released {
+                true => false,
+                false => butt_is_pressed,
             };
-
-            let any_button_pressed = match (butt_is_pressed, butt_a_is_pressed) {
-                (true, _) => true,
-                (_, true) => true,
-                _ => false,
-            };
-
-            let button_state = match (any_button_released, any_button_pressed) {
-                (true, _) => false,
-                (false, true) => true,
-                _ => false,
+            let button_1_state = match butt_a_is_released {
+                true => false,
+                false => butt_a_is_pressed,
             };
 
             gpiote.channel0().reset_events();
@@ -89,7 +75,7 @@ fn GPIOTE() {
             gpiote.channel2().reset_events();
             gpiote.channel3().reset_events();
 
-            *BUTTON_PRESS.borrow(cs).borrow_mut() = button_state;
+            *BUTTONS_STATE.borrow(cs).borrow_mut() = [button_0_state, button_1_state, false];
         }
     });
 }
