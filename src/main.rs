@@ -1,27 +1,29 @@
 #![no_main]
 #![no_std]
 
-mod controls;
+mod buttons;
 
 use cortex_m_rt::entry;
 
 use microbit::display::blocking::Display;
+use microbit::hal::rtc::RtcInterrupt;
 use microbit::hal::time::Hertz;
 use microbit::hal::timer::Timer;
-use microbit::hal::{gpio, prelude::*, pwm, Clocks};
+use microbit::hal::{gpio, prelude::*, pwm, Clocks, Rtc};
 use microbit::Board;
 use microbit::{self as _};
 
 use panic_rtt_target as _;
+
 use rtt_target::{rprintln, rtt_init_print};
 
-use crate::controls::{get_pin_state, init_buttons};
+use crate::buttons::{get_buttons_state, init_buttons, init_polling};
 
 #[entry]
 fn main() -> ! {
     rtt_init_print!();
 
-    let board = Board::take().unwrap();
+    let mut board = Board::take().unwrap();
     let mut timer = Timer::new(board.TIMER0);
     let mut display = Display::new(board.display_pins);
 
@@ -60,16 +62,18 @@ fn main() -> ! {
 
     let delay_ms = 10u32;
 
+    // init clock for speaker
     let _clocks = Clocks::new(board.CLOCK)
         .enable_ext_hfosc()
         .set_lfclk_src_synth()
         .start_lfclk();
 
+    // diable speaker pin
     let mut speaker_pin = board.speaker_pin.into_push_pull_output(gpio::Level::High);
     let _ = speaker_pin.set_low();
 
+    // init pwm and params
     let speaker = pwm::Pwm::new(board.PWM0);
-
     speaker
         // output the waveform on the speaker pin
         .set_output_pin(pwm::Channel::C0, speaker_pin.degrade())
@@ -88,17 +92,23 @@ fn main() -> ! {
         .set_seq_refresh(pwm::Seq::Seq0, 0)
         .set_seq_end_delay(pwm::Seq::Seq0, 0);
 
-    speaker.set_period(Hertz(440u32));
-    let max_duty = speaker.max_duty();
-    speaker.set_duty_on_common(max_duty / 2);
+    // mute on start
     speaker.disable_channel(pwm::Channel::C0);
 
-    let _butt = board.buttons;
+    // init real time clock
+    let mut rtc = Rtc::new(board.RTC0, 511).unwrap();
 
-    init_buttons(board.GPIOTE, board.pins, None);
+    rtc.enable_counter();
+    rtc.enable_interrupt(RtcInterrupt::Tick, Some(&mut board.NVIC));
+    rtc.enable_event(RtcInterrupt::Tick);
+
+    // init rtc polling interrupt
+    init_polling(rtc);
+    // init buttons
+    init_buttons(board.pins);
 
     loop {
-        let buttons_state = get_pin_state();
+        let buttons_state = get_buttons_state();
 
         match buttons_state {
             [true, false, _] => {
